@@ -80,6 +80,8 @@ class DeclarativeWebContainer : public QWindow, public QQmlParserStatus, protect
     Q_PROPERTY(QMozSecurity *security READ security NOTIFY securityChanged)
     Q_PROPERTY(DeclarativeHistoryModel* historyModel READ historyModel WRITE setHistoryModel NOTIFY historyModelChanged)
 
+    Q_PROPERTY(bool hasInitialUrl READ hasInitialUrl NOTIFY hasInitialUrlChanged)
+
 public:
     DeclarativeWebContainer(QWindow *parent = 0);
     ~DeclarativeWebContainer();
@@ -144,6 +146,7 @@ public:
     // For D-Bus interfaces
     uint tabOwner(int tabId) const;
     int requestTabWithOwner(int tabId, const QString &url, uint ownerPid);
+    void requestTabWithOwnerAsync(int tabId, const QString &url, uint ownerPid, void *context);
     Q_INVOKABLE void releaseActiveTabOwnership();
 
     Q_INVOKABLE void load(const QString &url = QString(), bool force = false);
@@ -163,6 +166,8 @@ public:
 
     DeclarativeHistoryModel *historyModel() const;
     void setHistoryModel(DeclarativeHistoryModel *model);
+
+    bool hasInitialUrl() const;
 
 signals:
     void rotationHandlerChanged();
@@ -204,6 +209,10 @@ signals:
     void webContentOrientationChanged(Qt::ScreenOrientation orientation);
     void securityChanged();
     void historyModelChanged();
+    void applicationClosing();
+
+    void hasInitialUrlChanged();
+    void requestTabWithOwnerAsyncResult(int tabId, void *context);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event);

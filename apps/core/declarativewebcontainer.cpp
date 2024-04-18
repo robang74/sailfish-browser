@@ -540,6 +540,29 @@ int DeclarativeWebContainer::requestTabWithOwner(int tabId, const QString &url, 
     return tabId;
 }
 
+void DeclarativeWebContainer::requestTabWithOwnerAsync(int tabId, const QString &url, uint ownerPid, void *context)
+{
+    // We should only create or activate tabs once the model has loaded
+    if (m_model->loaded()) {
+        // The tab model has already loaded, so we can go ahead and create the tab
+        int activatedTab = requestTabWithOwner(tabId, url, ownerPid);
+        emit requestTabWithOwnerAsyncResult(activatedTab, context);
+    } else {
+        // The model has yet to load, so queue creation of the tab
+        QMetaObject::Connection * const connection = new QMetaObject::Connection;
+        *connection = connect(m_model.data(), &DeclarativeTabModel::loadedChanged, [this, tabId, url, ownerPid, context, connection]() {
+            // We assume that m_model->loaded() is now set to true
+            int activatedTab = requestTabWithOwner(tabId, url, ownerPid);
+            qCDebug(lcCoreLog) << "Delaying tab request created tabId:" << activatedTab;
+            emit requestTabWithOwnerAsyncResult(activatedTab, context);
+            // Single-shot connection
+            QObject::disconnect(*connection);
+            delete connection;
+        });
+        qCDebug(lcCoreLog) << "Tab requested while loading, delaying request on tabId:" << tabId;
+    }
+}
+
 uint DeclarativeWebContainer::tabOwner(int tabId) const
 {
     return m_tabOwners.value(tabId);
@@ -681,7 +704,12 @@ bool DeclarativeWebContainer::eventFilter(QObject *obj, QEvent *event)
             m_closeEventFilter->applicationClosingStarted();
             if (!m_closing) {
                 m_webPages->clear();
+                bool initialUrl = hasInitialUrl();
                 m_initialUrl = "";
+                if (initialUrl) {
+                    emit hasInitialUrlChanged();
+                }
+
                 m_initialized = false;
                 destroyWindow();
                 if (QMozContext::instance()->getNumberOfWindows() != 0) {
@@ -690,6 +718,7 @@ bool DeclarativeWebContainer::eventFilter(QObject *obj, QEvent *event)
                     m_closeEventFilter->closeApplication();
                 }
             }
+            emit applicationClosing();
         } else if (event->type() == QEvent::Show) {
             if (!handle()) {
                 m_closeEventFilter->cancelCloseApplication();
@@ -993,6 +1022,12 @@ void DeclarativeWebContainer::initialize()
         m_completed = true;
         emit completedChanged();
     }
+
+    bool initialUrl = hasInitialUrl();
+    m_initialUrl = "";
+    if (initialUrl) {
+        emit hasInitialUrlChanged();
+    }
 }
 
 void DeclarativeWebContainer::onDownloadStarted()
@@ -1177,6 +1212,11 @@ void DeclarativeWebContainer::setHistoryModel(DeclarativeHistoryModel *model)
         m_historyModel = model;
         emit historyModelChanged();
     }
+}
+
+bool DeclarativeWebContainer::hasInitialUrl() const
+{
+    return !m_initialUrl.isEmpty();
 }
 
 void DeclarativeWebContainer::dsmeStateChange(const QString &state)
